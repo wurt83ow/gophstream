@@ -34,6 +34,7 @@ type Keeper interface {
 	GetProcessedMessages(context.Context, models.Filter, models.Pagination) ([]models.Message, error)
 	Ping(context.Context) bool
 	Close() bool
+	UpdateMessageProcessed(context.Context, int) error
 }
 
 // NewMemoryStorage creates a new MemoryStorage instance
@@ -75,4 +76,28 @@ func (s *MemoryStorage) GetProcessedMessages(ctx context.Context, filter models.
 	}
 
 	return messages, nil
+}
+
+// UpdateMessageProcessed updates the processed status of a message in the database
+func (s *MemoryStorage) UpdateMessageProcessed(ctx context.Context, id int) error {
+	// Update the message's processed status in the database
+	err := s.keeper.UpdateMessageProcessed(ctx, id)
+	if err != nil {
+		s.log.Info("error updating message processed status in database: ", zap.Error(err))
+		return err
+	}
+
+	s.mx.Lock()
+	defer s.mx.Unlock()
+
+	// Update the in-memory map if the message exists
+	if message, exists := s.messages[id]; exists {
+		message.Processed = true
+		s.messages[id] = message
+	} else {
+		s.log.Info("message not found in memory", zap.Int("id", id))
+		return ErrNotFound
+	}
+
+	return nil
 }

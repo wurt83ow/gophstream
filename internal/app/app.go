@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi"
-	_ "github.com/wurt83ow/gophstream/docs" // connecting generated Swagger files
+	
 	"github.com/wurt83ow/gophstream/internal/apiservice"
 	authz "github.com/wurt83ow/gophstream/internal/authorization"
 	"github.com/wurt83ow/gophstream/internal/bdkeeper"

@@ -14,7 +14,7 @@ import (
 )
 
 type External interface {
-	GetUserInfo(int, int) (models.ExtUserData, error)
+	SendMessageToKafka(message models.Message) (int, error)
 }
 
 type Log interface {
@@ -23,7 +23,7 @@ type Log interface {
 
 type Storage interface {
 	GetNonUpdateUsers(context.Context) ([]models.ExtUserData, error)
-	UpdateUsersInfo(context.Context, []models.ExtUserData) error
+	UpdateMessageProcessed(context.Context, int) error
 }
 
 type Pool interface {
@@ -125,33 +125,33 @@ func (a *ApiService) GetResults() <-chan interface{} {
 	return a.results
 }
 
-func (a *ApiService) CreateUsersTask(users []models.ExtUserData) {
+func (a *ApiService) CreateUsersTask(messages []models.Message) {
 	var task *workerpool.Task
 
-	for _, user := range users {
+	for _, message := range messages {
 
 		task = workerpool.NewTask(func(data interface{}) error {
 
-			usr, ok := data.(models.ExtUserData)
+			msg, ok := data.(models.Message)
 			if ok { // type assertion failed
-				usrinfo, err := a.external.GetUserInfo(usr.PassportSerie, usr.PassportNumber)
+				msg_id, err := a.external.SendMessageToKafka(msg)
 
 				if err != nil {
 					return fmt.Errorf("failed to create order task: %w", err)
 				}
-				a.log.Info("processed task: ", zap.String("usefinfo", fmt.Sprintf("%d%d", usr.PassportSerie, usr.PassportNumber)))
-				a.AddResults(usrinfo)
+				a.log.Info("processed task: ", zap.String("usefinfo", fmt.Sprintf("%d%d", msg.ID)))
+				a.AddResults(msg_id)
 			}
 
 			return nil
-		}, user)
+		}, message)
 		a.pool.AddTask(task)
 	}
 }
 
-func (a *ApiService) doWork(result []models.ExtUserData) {
+func (a *ApiService) doWork(msg_id int) {
 	// perform a group update of the users table (field Surname, Name, Address)
-	err := a.storage.UpdateUsersInfo(a.ctx, result)
+	err := a.storage.UpdateMessageProcessed(a.ctx, msg_id)
 	if err != nil {
 		a.log.Info("errors when updating order status: ", zap.Error(err))
 	}

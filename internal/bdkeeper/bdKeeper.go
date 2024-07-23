@@ -97,3 +97,14 @@ func (kp *BDKeeper) GetProcessedMessages(ctx context.Context, filter models.Filt
 
 	return messages, nil
 }
+
+// UpdateMessageProcessed updates the processed status of a message in the database
+func (kp *BDKeeper) UpdateMessageProcessed(ctx context.Context, id int) error {
+	query := `UPDATE messages SET processed = true WHERE id = $1`
+	_, err := kp.pool.Exec(ctx, query, id)
+	if err != nil {
+		kp.log.Info("Error updating message processed status in database: ", zap.Error(err))
+		return err
+	}
+	return nil
+}
