@@ -10,9 +10,10 @@ import (
 	"time"
 
 	"github.com/go-chi/chi"
-	
+
 	"github.com/wurt83ow/gophstream/internal/apiservice"
-	authz "github.com/wurt83ow/gophstream/internal/authorization"
+	"github.com/wurt83ow/gophstream/internal/kafka"
+
 	"github.com/wurt83ow/gophstream/internal/bdkeeper"
 	"github.com/wurt83ow/gophstream/internal/config"
 	"github.com/wurt83ow/gophstream/internal/controllers"
@@ -63,11 +64,8 @@ func (server *Server) Serve() {
 	var allTask []*workerpool.Task
 	pool := initializeWorkerPool(allTask, option, nLogger)
 
-	// create a new NewJWTAuthz for user authorization
-	authz := initializeAuthz(memoryStorage, option, nLogger)
-
 	// create a new controller to process incoming requests
-	basecontr := initializeBaseController(server.ctx, memoryStorage, option.DefaultEndTime, nLogger, authz)
+	basecontr := initializeBaseController(server.ctx, memoryStorage, option.DefaultEndTime, nLogger)
 
 	// get a middleware for logging requests
 	reqLog := middleware.NewReqLog(nLogger)
@@ -75,8 +73,15 @@ func (server *Server) Serve() {
 	// start the worker pool in the background
 	go pool.RunBackground()
 
+	// create a new kafka
+	// Определение брокеров Kafka
+	brokers := []string{"broker1:9092", "broker2:9092"}
+	// Определение топика
+	topic := "example-topic"
+	kafka := initializeKafka(server.ctx, brokers, topic, nLogger)
+
 	// create a new controller for creating outgoing requests
-	extcontr := initializeExtController(server.ctx, memoryStorage, option, nLogger)
+	extcontr := initializeExtController(server.ctx, memoryStorage, kafka, nLogger)
 
 	apiService := initializeApiService(server.ctx, extcontr, pool, memoryStorage, nLogger, option)
 	apiService.Start()
@@ -120,9 +125,9 @@ func initializeStorage(ctx context.Context, keeper storage.Keeper, logger *logge
 
 // initializeBaseController initializes a BaseController instance
 func initializeBaseController(ctx context.Context, storage *storage.MemoryStorage, DefaultEndTime func() string,
-	logger *logger.Logger, authz *authz.JWTAuthz,
+	logger *logger.Logger,
 ) *controllers.BaseController {
-	return controllers.NewBaseController(ctx, storage, DefaultEndTime, logger, authz)
+	return controllers.NewBaseController(ctx, storage, DefaultEndTime, logger)
 }
 
 // initializeWorkerPool initializes a worker pool with the provided tasks and options
@@ -130,14 +135,14 @@ func initializeWorkerPool(allTask []*workerpool.Task, option *config.Options, lo
 	return workerpool.NewPool(allTask, option.Concurrency, logger, option.TaskExecutionInterval)
 }
 
-// initializeAuthz initializes a JWTAuthz instance for user authorization
-func initializeAuthz(storage *storage.MemoryStorage, option *config.Options, logger *logger.Logger) *authz.JWTAuthz {
-	return authz.NewJWTAuthz(storage, option.JWTSigningKey(), logger)
+// initializeBaseController initializes a BaseController instance
+func initializeKafka(ctx context.Context, brokers []string, topic string, logger *logger.Logger) *kafka.KafkaProducerImpl {
+	return kafka.NewKafkaProducer(ctx, brokers, topic, logger)
 }
 
 // initializeExtController initializes an ExtController instance
-func initializeExtController(ctx context.Context, storage *storage.MemoryStorage, option *config.Options, logger *logger.Logger) *controllers.ExtController {
-	return controllers.NewExtController(ctx, storage, option.ApiSystemAddress, logger)
+func initializeExtController(ctx context.Context, storage *storage.MemoryStorage, kafka controllers.KafkaProducer, logger *logger.Logger) *controllers.ExtController {
+	return controllers.NewExtController(ctx, storage, kafka, logger)
 }
 
 // initializeApiService initializes an ApiService instance

@@ -40,7 +40,6 @@ type Keeper interface {
 	UpdateMessagesProcessed(ctx context.Context, ids []int) error
 	Ping(context.Context) bool
 	Close() bool
-	UpdateMessageProcessed(context.Context, int) error
 }
 
 // NewMemoryStorage creates a new MemoryStorage instance

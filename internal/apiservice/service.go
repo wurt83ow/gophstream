@@ -22,8 +22,8 @@ type Log interface {
 }
 
 type Storage interface {
-	GetNonUpdateUsers(context.Context) ([]models.ExtUserData, error)
-	UpdateMessageProcessed(context.Context, int) error
+	GetMessages(context.Context, models.Filter, models.Pagination) ([]models.Message, error)
+	UpdateMessagesProcessed(context.Context, []int) error
 }
 
 type Pool interface {
@@ -98,14 +98,23 @@ func (a *ApiService) ProcessMessages(ctx context.Context) {
 			}
 		case <-t.C:
 
-			users, err := a.storage.GetNonUpdateUsers(ctx)
+			processed := false
+			filter := models.Filter{
+				Processed: &processed,
+			}
+
+			pagination := models.Pagination{
+				Limit: 100,
+			}
+
+			messages, err := a.storage.GetMessages(ctx, filter, pagination)
 
 			if err != nil {
 
 				return
 			}
 
-			a.CreateUsersTask(users)
+			a.CreateTask(messages)
 
 			if len(result) != 0 {
 				a.doWork(result)
@@ -125,7 +134,7 @@ func (a *ApiService) GetResults() <-chan interface{} {
 	return a.results
 }
 
-func (a *ApiService) CreateUsersTask(messages []models.Message) {
+func (a *ApiService) CreateTask(messages []models.Message) {
 	var task *workerpool.Task
 
 	for _, message := range messages {
@@ -149,9 +158,9 @@ func (a *ApiService) CreateUsersTask(messages []models.Message) {
 	}
 }
 
-func (a *ApiService) doWork(msg_id int) {
-	// perform a group update of the users table (field Surname, Name, Address)
-	err := a.storage.UpdateMessageProcessed(a.ctx, msg_id)
+func (a *ApiService) doWork(ids []int) {
+	// perform a group update of the massages table (field Processed)
+	err := a.storage.UpdateMessagesProcessed(a.ctx, ids)
 	if err != nil {
 		a.log.Info("errors when updating order status: ", zap.Error(err))
 	}

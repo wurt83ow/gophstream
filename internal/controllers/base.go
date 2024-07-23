@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/go-chi/chi"
-	"github.com/go-chi/chi/middleware"
 	"github.com/wurt83ow/gophstream/internal/models"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -27,24 +26,28 @@ type Log interface {
 
 // BaseController struct for handling requests
 type BaseController struct {
-	ctx     context.Context
-	storage Storage
-	log     Log
+	ctx            context.Context
+	storage        Storage
+	defaultEndTime func() string
+	log            Log
 }
 
 // NewBaseController creates a new BaseController instance
-func NewBaseController(ctx context.Context, storage Storage, log Log) *BaseController {
-	return &BaseController{
-		ctx:     ctx,
-		storage: storage,
-		log:     log,
+func NewBaseController(ctx context.Context, storage Storage, defaultEndTime func() string, log Log) *BaseController {
+	instance := &BaseController{
+		ctx:            ctx,
+		storage:        storage,
+		defaultEndTime: defaultEndTime,
+		log:            log,
 	}
+
+	return instance
 }
 
 // Route sets up the routes for the BaseController
 func (h *BaseController) Route() *chi.Mux {
 	r := chi.NewRouter()
-	r.Use(middleware.Logger)
+
 	r.Post("/api/message", h.AddMessage)
 	r.Get("/api/messages", h.GetProcessedMessages)
 	return r
