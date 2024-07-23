@@ -17,7 +17,7 @@ import (
 // Storage interface for database operations
 type Storage interface {
 	InsertMessage(context.Context, models.Message) error
-	GetProcessedMessages(context.Context, models.Filter, models.Pagination) ([]models.Message, error)
+	GetMessages(context.Context, models.Filter, models.Pagination) ([]models.Message, error)
 }
 
 // Log interface for logging
@@ -99,7 +99,6 @@ func (h *BaseController) AddMessage(w http.ResponseWriter, r *http.Request) {
 // @Failure 500 {string} string "Internal Server Error"
 // @Router /api/messages [get]
 func (h *BaseController) GetProcessedMessages(w http.ResponseWriter, r *http.Request) {
-	var filter models.Filter
 	var pagination models.Pagination
 
 	if v := r.URL.Query().Get("limit"); v != "" {
@@ -121,7 +120,12 @@ func (h *BaseController) GetProcessedMessages(w http.ResponseWriter, r *http.Req
 		pagination.Offset = val
 	}
 
-	messages, err := h.storage.GetProcessedMessages(h.ctx, filter, pagination)
+	processed := true
+	filter := models.Filter{
+		Processed: &processed,
+	}
+
+	messages, err := h.storage.GetMessages(h.ctx, filter, pagination)
 	if err != nil {
 		h.log.Info("error getting processed messages from storage: ", zap.Error(err))
 		w.WriteHeader(http.StatusInternalServerError)

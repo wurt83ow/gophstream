@@ -17,7 +17,7 @@ type Message struct {
 
 // Filter represents the criteria for filtering messages
 type Filter struct {
-	Processed bool `json:"processed"`
+	Processed *bool `json:"processed"`
 }
 
 // Pagination represents pagination details for listing messages

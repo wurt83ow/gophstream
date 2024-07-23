@@ -69,7 +69,7 @@ func NewApiService(ctx context.Context, external External, pool Pool, storage St
 func (a *ApiService) Start() {
 	a.ctx, a.cancelFunc = context.WithCancel(a.ctx)
 	a.wg.Add(1)
-	go a.UpdateUsers(a.ctx)
+	go a.ProcessMessages(a.ctx)
 }
 
 func (a *ApiService) Stop() {
@@ -77,10 +77,10 @@ func (a *ApiService) Stop() {
 	a.wg.Wait()
 }
 
-func (a *ApiService) UpdateUsers(ctx context.Context) {
+func (a *ApiService) ProcessMessages(ctx context.Context) {
 	t := time.NewTicker(time.Duration(a.taskInterval) * time.Millisecond)
 
-	result := make([]models.ExtUserData, 0)
+	result := make([]int, 0)
 
 	var dmx sync.RWMutex
 
@@ -92,7 +92,7 @@ func (a *ApiService) UpdateUsers(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case job := <-a.results:
-			j, ok := job.(models.ExtUserData)
+			j, ok := job.(int)
 			if ok {
 				result = append(result, j)
 			}

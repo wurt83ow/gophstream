@@ -2,10 +2,13 @@ package bdkeeper
 
 import (
 	"context"
+	"fmt"
 	"time"
 
+	"github.com/jackc/pgx"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/wurt83ow/gophstream/internal/models"
+	"github.com/wurt83ow/gophstream/internal/storage"
 	"go.uber.org/zap"
 )
 
@@ -60,6 +63,49 @@ func (kp *BDKeeper) Ping(ctx context.Context) bool {
 	return true
 }
 
+// LoadMessages loads messages from the database
+func (kp *BDKeeper) LoadMessages(ctx context.Context) (storage.StorageMessage, error) {
+	query := `
+    SELECT
+        id,
+        content,
+        created_at,
+        processed
+    FROM
+        messages`
+
+	rows, err := kp.pool.Query(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load messages: %w", err)
+	}
+
+	defer rows.Close()
+
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to load messages: %w", err)
+	}
+
+	data := make(map[int]models.Message)
+
+	for rows.Next() {
+		var m models.Message
+
+		err := rows.Scan(
+			&m.ID,
+			&m.Content,
+			&m.CreatedAt,
+			&m.Processed,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load messages: %w", err)
+		}
+
+		data[m.ID] = m
+	}
+
+	return data, nil
+}
+
 // InsertMessage inserts a new message into the database
 func (kp *BDKeeper) InsertMessage(ctx context.Context, message models.Message) (int, error) {
 	var id int
@@ -72,13 +118,23 @@ func (kp *BDKeeper) InsertMessage(ctx context.Context, message models.Message) (
 	return id, nil
 }
 
-// GetProcessedMessages retrieves processed messages from the database based on the provided filter and pagination
-func (kp *BDKeeper) GetProcessedMessages(ctx context.Context, filter models.Filter, pagination models.Pagination) ([]models.Message, error) {
+// GetMessages retrieves processed messages from the database based on the provided filter and pagination
+func (kp *BDKeeper) GetMessages(ctx context.Context, filter models.Filter, pagination models.Pagination) ([]models.Message, error) {
 	var messages []models.Message
-	query := `SELECT id, content, created_at, processed FROM messages WHERE processed = $1 LIMIT $2 OFFSET $3`
-	rows, err := kp.pool.Query(ctx, query, filter.Processed, pagination.Limit, pagination.Offset)
+	var query string
+	var rows pgx.Rows
+	var err error
+
+	if filter.Processed == nil {
+		query = `SELECT id, content, created_at, processed FROM messages LIMIT $1 OFFSET $2`
+		rows, err = kp.pool.Query(ctx, query, pagination.Limit, pagination.Offset)
+	} else {
+		query = `SELECT id, content, created_at, processed FROM messages WHERE processed = $1 LIMIT $2 OFFSET $3`
+		rows, err = kp.pool.Query(ctx, query, *filter.Processed, pagination.Limit, pagination.Offset)
+	}
+
 	if err != nil {
-		kp.log.Info("Error getting processed messages from database: ", zap.Error(err))
+		kp.log.Info("Error getting messages from database: ", zap.Error(err))
 		return nil, err
 	}
 	defer rows.Close()
@@ -98,12 +154,12 @@ func (kp *BDKeeper) GetProcessedMessages(ctx context.Context, filter models.Filt
 	return messages, nil
 }
 
-// UpdateMessageProcessed updates the processed status of a message in the database
-func (kp *BDKeeper) UpdateMessageProcessed(ctx context.Context, id int) error {
-	query := `UPDATE messages SET processed = true WHERE id = $1`
-	_, err := kp.pool.Exec(ctx, query, id)
+// UpdateMessagesProcessed updates the processed status of messages in the database
+func (kp *BDKeeper) UpdateMessagesProcessed(ctx context.Context, ids []int) error {
+	query := `UPDATE messages SET processed = true WHERE id = ANY($1)`
+	_, err := kp.pool.Exec(ctx, query, ids)
 	if err != nil {
-		kp.log.Info("Error updating message processed status in database: ", zap.Error(err))
+		kp.log.Info("Error updating messages processed status in database: ", zap.Error(err))
 		return err
 	}
 	return nil
